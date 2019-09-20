@@ -13,7 +13,7 @@ import java.io.*;
 
 class Server extends JFrame{
 
-    private boolean connected;
+    private boolean isOnline;
     private JTextArea chatWindow;
     private JTextField messageField;
     private String helpMessage;
@@ -23,17 +23,17 @@ class Server extends JFrame{
     private PrintWriter pr;
 
     private boolean sendMessage;
+    private Socket socket;
 
     private void start()  {
 
         new Thread(() -> {
             try {
-                Socket socket;
                 sendLocalMessage("Server is online. Waiting for client to join...");
                 messageField.setEnabled(false);
                 socket = new ServerSocket(5000).accept();
                 messageField.setEnabled(true);
-                connected = true;
+                isOnline = true;
 
                 sendLocalMessage("Client connected");
 
@@ -43,6 +43,12 @@ class Server extends JFrame{
 
 
                 while (true) {
+
+                    if (socket.isClosed()) {
+                        isOnline = false;
+                        break;
+                    }
+
                     receiveMessage();
 
                     String messageToSend = messageField.getText();
@@ -52,9 +58,7 @@ class Server extends JFrame{
                     }
                 }
 
-
-
-
+                socket = null;
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -64,14 +68,19 @@ class Server extends JFrame{
     }
 
     private void stop() {
-
-
-
+        try {
+            socket.close();
+            isOnline = false;
+            sendLocalMessage("You are now offline.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
+
 
     Server() {
         sendMessage = false;
-        connected = false;
+        isOnline = false;
         helpMessage =
                 "To send a message type your message in the lower text box and press Enter \n" +
                 "To go online type - /start \n" +
@@ -86,7 +95,7 @@ class Server extends JFrame{
         this.setSize(400, 600);
         this.setResizable(false);
         this.setContentPane(panel);
-        this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+        this.setDefaultCloseOperation(HIDE_ON_CLOSE);
 
         chatWindow = new JTextArea();
         chatWindow.setEditable(false);
@@ -132,10 +141,16 @@ class Server extends JFrame{
 
         switch (message.toLowerCase()) {
             case "/start":
-                start();
+                if (!isOnline)
+                    start();
+                else
+                    sendLocalMessage("You are already online. To go offline close this window or type /stop");
                 break;
             case "/stop":
-                stop();
+                if (isOnline)
+                    stop();
+                else
+                    sendLocalMessage("You are already offline. To go online type /stop");
                 break;
             case "/clear":
                 chatWindow.setText("");
@@ -144,8 +159,16 @@ class Server extends JFrame{
                 sendLocalMessage(helpMessage);
                 break;
             default:
-                sendMessage = true;
-                break;
+
+                if (message.startsWith("/"))
+                    sendLocalMessage("Unrecognizable command. Type /help to see all available commands");
+                else {
+                    if (isOnline)
+                        sendMessage = true;
+                    else
+                        sendLocalMessage("You have to be online to send messages. To go online type /start");
+                    break;
+                }
         }
         messageField.setText("");
     }
@@ -166,10 +189,22 @@ class Server extends JFrame{
     private void sendOnlineMessage(String message) {
 
         pr.println(message);
+
+        if (pr.checkError()) {
+
+            sendLocalMessage("Client is no longer online. Closing the connection.");
+
+            stop();
+
+
+        }
+
         sendLocalMessage("You: " + message);
         pr.flush();
         messageField.setText("");
         sendMessage = false;
+
+
     }
 
 }

@@ -14,7 +14,7 @@ import java.net.Socket;
 @SuppressWarnings("DuplicatedCode")
 class Client extends JFrame {
 
-    private boolean connected;
+    private boolean isOnline;
     private JTextArea chatWindow;
     private JTextField messageField;
     private String helpMessage;
@@ -25,15 +25,19 @@ class Client extends JFrame {
 
     private boolean sendMessage;
 
+    private Socket socket;
+
     private void start(){
 
         new Thread(() -> {
 
             sendLocalMessage("Trying to connect to the server...");
+            messageField.setEnabled(false);
             try {
                 //Client socket
-                Socket socket = new Socket("localhost", 5000);
-                connected = true;
+                socket = new Socket("localhost", 5000);
+                isOnline = true;
+                messageField.setEnabled(true);
                 sendLocalMessage("Successfully connected to the server");
                 try {
 
@@ -43,11 +47,18 @@ class Client extends JFrame {
 
 
                     while (true) {
+
+                        if (socket.isClosed()) {
+                            isOnline = false;
+                            break;
+                        }
+
                         String messageToSend = messageField.getText();
                         if (sendMessage)
                             sendOnlineMessage(messageToSend);
                         receiveMessage();
                     }
+                    socket = null;
 
 
                 } catch (Exception e) {
@@ -68,7 +79,7 @@ class Client extends JFrame {
 
     Client() {
 
-        connected = false;
+        isOnline = false;
 
         helpMessage =
                 "To send a message type your message in the lower text box and press Enter \n" +
@@ -132,10 +143,16 @@ class Client extends JFrame {
 
         switch (message.toLowerCase()) {
             case "/start":
-                start();
+                if (!isOnline)
+                    start();
+                else
+                    sendLocalMessage("You are already online. To go offline close this window or type /stop");
                 break;
             case "/stop":
-                stop();
+                if (isOnline)
+                    stop();
+                else
+                    sendLocalMessage("You are already offline. To go online type /stop");
                 break;
             case "/clear":
                 chatWindow.setText("");
@@ -144,14 +161,28 @@ class Client extends JFrame {
                 sendLocalMessage(helpMessage);
                 break;
             default:
-                sendMessage = true;
-                break;
+
+                if (message.startsWith("/"))
+                    sendLocalMessage("Unrecognizable command. Type /help to see all available commands");
+                else {
+                    if (isOnline)
+                        sendMessage = true;
+                    else
+                        sendLocalMessage("You have to be online to send messages. To go online type /start");
+                    break;
+                }
         }
         messageField.setText("");
     }
 
     private void stop() {
-
+        try {
+            socket.close();
+            isOnline = false;
+            sendLocalMessage("You are now offline.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void sendLocalMessage(String message) {
@@ -159,10 +190,16 @@ class Client extends JFrame {
     }
 
     private void sendOnlineMessage(String message) {
-        if (message.equals(""))
-            return;
 
         pr.println(message);
+        if (pr.checkError()) {
+
+            sendLocalMessage("Client is no longer online. Closing the connection.");
+
+            stop();
+
+        }
+
         sendLocalMessage("You: " + message);
         pr.flush();
         messageField.setText("");
